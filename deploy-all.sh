@@ -4,8 +4,8 @@
 # in a different AWS account, so we can't import directly).
 #
 # At a high level:
-# 1) Call build scripts to install dependencies and package deployment artefacts 
-# 2) Deploy the API Provider with base (default) configuration 
+# 1) Call build scripts to install dependencies and package deployment artefacts
+# 2) Deploy the API Provider with base (default) configuration
 # 3) Deploy the API Consumer, configuring it with the API Providers details
 # 4) Update the API Provider stack with the consumers role and VPC endpoint details
 #
@@ -58,17 +58,25 @@ echo "*** Creating S3 buckets for deployment artefacts..."
 CONSUMER_BUCKET="private-api-deployment-${CONSUMER_REGION}-${CONSUMER_ACCTID}"
 if aws s3api head-bucket --bucket $CONSUMER_BUCKET --profile $CONSUMER_PROFILE 2>/dev/null; then
     echo "re-using existing consumer bucket $CONSUMER_BUCKET"
-else 
+else
     aws s3 mb s3://$CONSUMER_BUCKET --profile $CONSUMER_PROFILE
     if [ $? -ne 0 ]; then exit 1; fi
+
+    aws s3api put-public-access-block \
+      --bucket $CONSUMER_BUCKET \
+      --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 fi
 
 PROVIDER_BUCKET="private-api-deployment-${PROVIDER_REGION}-${PROVIDER_ACCTID}"
 if aws s3api head-bucket --bucket $PROVIDER_BUCKET --profile $PROVIDER_PROFILE 2>/dev/null; then
     echo "re-using existing provider bucket $PROVIDER_BUCKET"
-else 
+else
     aws s3 mb s3://$PROVIDER_BUCKET --profile $PROVIDER_PROFILE
     if [ $? -ne 0 ]; then exit 1; fi
+
+    aws s3api put-public-access-block \
+      --bucket $CONSUMER_BUCKET \
+      --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 fi
 
 echo "*** Packaging API consumer code for deployment..."
@@ -93,7 +101,7 @@ if [ $? -ne 0 ]; then exit 1; fi
 
 echo "*** Retrieving provider stack outputs..."
 declare -A PROVIDER_OUTPUTS=()
-while read -r key val; do 
+while read -r key val; do
     PROVIDER_OUTPUTS[$key]=$val
 done < <(aws cloudformation describe-stacks \
             --stack-name private-api-backend \
@@ -120,8 +128,8 @@ if [ $? -ne 0 ]; then exit 1; fi
 
 echo "*** Retrieving consumer stack outputs..."
 declare -A CONSUMER_OUTPUTS=()
-while read -r key val; do 
-    CONSUMER_OUTPUTS[$key]=$val 
+while read -r key val; do
+    CONSUMER_OUTPUTS[$key]=$val
 done < <(aws cloudformation describe-stacks \
             --stack-name private-api-client \
             --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
